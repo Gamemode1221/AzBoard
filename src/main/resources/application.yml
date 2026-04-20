@@ -20,6 +20,12 @@ spring:
     consumer:
       group-id: community-group
       auto-offset-reset: earliest
+      # 받을 때 JSON을 Java 객체로 변환 (역직렬화)
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
+      properties:
+        spring.json.trusted.packages: "*" # 보안상 신뢰할 수 있는 패키지 지정 (모두 허용)
     producer:
+      # 보낼 때 Java 객체를 JSON으로 변환 (직렬화)
       key-serializer: org.apache.kafka.common.serialization.StringSerializer
-      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
