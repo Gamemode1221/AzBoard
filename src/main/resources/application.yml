@@ -1,0 +1,25 @@
+spring:
+  application:
+    name: AzBoard
+  # MySQL 설정
+  datasource:
+    url: jdbc:mysql://localhost:3306/community_db?serverTimezone=Asia/Seoul
+    username: root
+    password: root
+    driver-class-name: com.mysql.cj.jdbc.Driver
+
+  # JPA 설정 (DB 테이블 자동 생성)
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: true
+
+  # Kafka 설정
+  kafka:
+    bootstrap-servers: localhost:9092
+    consumer:
+      group-id: community-group
+      auto-offset-reset: earliest
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
