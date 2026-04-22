@@ -2,10 +2,8 @@
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport"
-          content="width=device-width, user-scalable=no, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0">
-    <meta http-equiv="X-UA-Compatible" content="ie=edge">
-    <title>Document</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>실시간 커뮤니티</title>
     <style>
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
@@ -119,20 +117,28 @@
 
         // 서버에서 'newPost'라는 이름으로 이벤트가 날아오면 실행됨
         eventSource.addEventListener('newPost', (e) => {
-            const data = JSON.parse(e.data);
+            console.log("📢 [SSE 수신] raw data:", e.data);
 
-            // 토스트 알림 띄우기
-            showToast(`작성자: ${data.author} | 제목: ${data.title}`);
+            try {
+                const data = JSON.parse(e.data);
 
-            const postList = document.getElementById('post-list');
-            const li = document.createElement('li');
-            li.style.padding = '10px';
-            li.style.background = '#f1f3f5';
-            li.style.marginBottom = '5px';
-            li.style.borderRadius = '4px';
-            li.innerHTML = `<strong>[${data.postId}] ${data.title}</strong> - ${data.author} <span style="color:red; font-size:12px;">(New!)</span>`;
+                // 토스트 알림 띄우기
+                showToast(`작성자: ${data.author} | 제목: ${data.title}`);
 
-            postList.prepend(li);
+                // 서버에 다시 요청(loadPosts)하지 않고, 받은 데이터를 바로 목록 맨 위에 추가하기
+                const postList = document.getElementById('post-list');
+                const li = document.createElement('li');
+                li.style.padding = '10px';
+                li.style.background = '#f1f3f5';
+                li.style.marginBottom = '5px';
+                li.style.borderRadius = '4px';
+                li.innerHTML = `<strong>[${data.postId}] ${data.title}</strong> - ${data.author} <span style="color:red; font-size:12px;">(New!)</span>`;
+
+                postList.prepend(li);
+            } catch (err) {
+                console.log("❌ JSON 파싱 에러:", err);
+            }
+
         })
 
         // 2. 토스트 알림을 화면에 띄우는 함수
@@ -165,15 +171,15 @@
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ author, title, content })
             })
-                .then(response => {
-                    if(!response.ok) throw new Error("글 작성에 실패했습니다.");
+            .then(response => {
+                if(!response.ok) throw new Error("글 작성에 실패했습니다.");
 
-                    // 작성 성공 시 입력창 비우기
-                    document.getElementById('title').value = '';
-                    document.getElementById('content').value = '';
-                    console.log("🔵 글 작성 API 호출 성공!");
-                })
-                .catch(error => alert(error.message));
+                // 작성 성공 시 입력창 비우기
+                document.getElementById('title').value = '';
+                document.getElementById('content').value = '';
+                console.log("🔵 글 작성 API 호출 성공!");
+            })
+            .catch(error => alert(error.message));
         });
 
 

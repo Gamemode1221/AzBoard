@@ -110,3 +110,58 @@
     3. 우측 상단에 Toast 알림(작성자, 제목)이 정상적으로 팝업되는지 확인.
     4. 서버 새로고침(GET) 없이 화면 상단에 붉은색 `(New!)` 태그가 붙은 새 글 목록이 즉시 추가되는지 확인.
     5. 브라우저 창을 2개 띄워두고 한쪽에서 작성 시, 다른 쪽 창에도 실시간으로 전파되는지 확인.
+
+---
+
+# Spring Boot + Kafka 실시간 커뮤니티 프로젝트 개발 일지 (3일차)
+
+## 1. 3일차 개발 목표
+* **핵심 목표**: WebSocket과 STOMP 프로토콜을 활용한 '실시간 다대다(N:N) 채팅방' 구축
+* **주요 기술**: Spring WebSocket, STOMP (Simple Text Oriented Messaging Protocol), SockJS
+
+---
+
+## 2. 백엔드 채팅 시스템 구축 (STOMP Pub/Sub)
+
+### 2.1. 웹소켓 환경 설정 (`WebSocketConfig.java`)
+* `spring-boot-starter-websocket` 의존성 추가.
+* **Endpoint 설정**: 클라이언트가 웹소켓 통신을 시작할 연결점(Handshake)으로 `/ws-chat` 지정 및 `SockJS` Fallback 적용.
+* **Message Broker 설정**:
+  * 발행(Publish) 목적지 접두사: `/app` (클라이언트 -> 서버)
+  * 구독(Subscribe) 목적지 접두사: `/topic` (서버 -> 클라이언트 브로드캐스팅)
+
+### 2.2. 데이터 전송 객체 (`ChatMessage.java`)
+* 채팅 메시지의 성격을 구분하기 위해 `MessageType` Enum 적용 (`JOIN`, `CHAT`, `LEAVE`).
+* `sender`(보낸 사람), `content`(내용) 필드 구성.
+
+### 2.3. 채팅 컨트롤러 (`ChatController.java`)
+* `@MessageMapping`: HTTP의 서블릿 맵핑처럼 웹소켓으로 들어오는 메시지를 라우팅 (`/chat.sendMessage`, `/chat.addUser`).
+* `@SendTo`: 가공된 메시지를 `/topic/public` 채널을 구독 중인 모든 클라이언트에게 브로드캐스트.
+* `SimpMessageHeaderAccessor`를 활용해 웹소켓 세션에 유저 닉네임 저장(추후 퇴장 알림 등에 활용).
+
+---
+
+## 3. 프론트엔드 실시간 채팅 UI 구현 (`chat.html`)
+
+### 3.1. 화면 레이아웃 및 라이브러리
+* 기존 게시판(`index.html`)과 분리된 독립적인 채팅 테스트 페이지 작성.
+* CDN을 통해 `SockJS`와 `STOMP.js` 라이브러리 로드.
+* 내가 보낸 메시지(우측/파란색), 남이 보낸 메시지(좌측/회색), 시스템 알림(중앙) CSS 분리.
+
+### 3.2. JavaScript STOMP 클라이언트 로직
+* `connect()`: 닉네임 입력 후 `/ws-chat` 엔드포인트로 소켓 연결.
+* `onConnected()`: 연결 성공 시 즉시 `/topic/public` 채널을 구독(Subscribe)하고, 서버에 `JOIN` 메시지 전송.
+* `sendMessage()`: 입력한 텍스트를 JSON 형태로 묶어 `/app/chat.sendMessage`로 발행(Publish).
+* `onMessageReceived()`: 구독 채널에서 메시지가 수신되면, 보낸 사람(나/타인/시스템)에 따라 동적으로 DOM(채팅 말풍선)을 생성하여 화면에 렌더링.
+
+---
+
+## 4. ⚠️ 현재 진행 상태 및 실행 대기 (Pending Execution)
+**채팅 시스템의 백엔드와 프론트엔드 연동 코드가 모두 작성되었으나, 아직 실제 양방향 통신 테스트를 진행하지 않은 상태입니다.** 다음 단계(Kafka를 통한 채팅 고도화 등)로 넘어가기 전, **반드시 아래 체크리스트에 따라 코드를 실행하고 테스트해야 합니다.**
+
+* **테스트 체크리스트**:
+  1. 서버 재시작 후 `http://localhost:8080/chat.html` 접속.
+  2. 원활한 다중 접속 테스트를 위해 **일반 브라우저 창 1개, 시크릿 모드 창 1개**를 나란히 배치.
+  3. 양쪽 창에서 서로 다른 닉네임(예: user1, user2)으로 입장.
+  4. 입장 시 양쪽 화면 중앙에 `[닉네임]님이 입장하셨습니다.` 시스템 메시지가 뜨는지 확인.
+  5. 채팅을 입력하고 전송했을 때, 보낸 쪽에서는 우측 말풍선으로, 받는 쪽에서는 좌측 말풍선으로 **새로고침 없이 즉각적으로** 나타나는지 확인.
