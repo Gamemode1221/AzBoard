@@ -1,11 +1,13 @@
 package com.community.azboard.service;
 
 import com.community.azboard.controller.SseController;
+import com.community.azboard.dto.ChatMessage;
 import com.community.azboard.dto.PostCreatedEvent;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.kafka.annotation.KafkaListener;
+import org.springframework.messaging.simp.SimpMessageSendingOperations;
 import org.springframework.stereotype.Service;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
@@ -19,6 +21,9 @@ import java.util.List;
 public class KafkaConsumerService {
 
     private final ObjectMapper objectMapper;
+
+    // 특정 브로커(/topic/public)로 메시지를 쏴주는 String 내장 객체
+    private final SimpMessageSendingOperations messagingTemplate;
 
     @KafkaListener(topics = "community.new-post", groupId = "community-group")
     public void consume(PostCreatedEvent event) {
@@ -50,5 +55,16 @@ public class KafkaConsumerService {
         if (!deadEmitters.isEmpty()) {
             log.info("\uD83E\uDDF9 정리된 연결 수: {}", deadEmitters.size());
         }
+    }
+
+    // ** 서버를 여러 대 띄울 경우, 모든 서버가 메시지를 받아야 하므로 groupId를 무작위로 만들어줌
+    // 퍼블리싱 할 경우, #{T(java.util.UUID).randomUUID().toString()} 사용
+    @KafkaListener(topics = "chat.message", groupId = "chat-group")
+    public void consumeChatMessage(ChatMessage message) {
+        log.info("\uD83D\uDCE9 [Kafka 수신 -> 방 분배] 방 번호: {}, 내용: {}", message.getRoomId(), message.getContent());
+
+        String destination = "/topic/room/" + message.getRoomId();
+        // Kafka에서 받은 메시지를 이 서버에 물려있는 웹소켓 클라이언트들에게 뿌려줌
+        messagingTemplate.convertAndSend(destination, message);
     }
 }

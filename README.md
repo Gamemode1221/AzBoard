@@ -165,3 +165,50 @@
   3. 양쪽 창에서 서로 다른 닉네임(예: user1, user2)으로 입장.
   4. 입장 시 양쪽 화면 중앙에 `[닉네임]님이 입장하셨습니다.` 시스템 메시지가 뜨는지 확인.
   5. 채팅을 입력하고 전송했을 때, 보낸 쪽에서는 우측 말풍선으로, 받는 쪽에서는 좌측 말풍선으로 **새로고침 없이 즉각적으로** 나타나는지 확인.
+
+---
+
+# Spring Boot + Kafka 실시간 커뮤니티 프로젝트 개발 일지 (4일차)
+
+## 1. 4일차 개발 목표
+* **핵심 목표**: Kafka를 활용한 다중 서버 웹소켓 통신 환경 구축 및 동적 채팅방 분리 (채팅방 라우팅)
+* **주요 기술**: Spring Kafka, Spring WebSocket (STOMP), 동적 Topic 라우팅
+
+---
+
+## 2. 분산 아키텍처 도입 (Kafka + WebSocket)
+단일 서버 웹소켓 통신의 한계(서버 간 채팅 단절)를 극복하기 위해 중앙 메시지 브로커(Kafka)를 연동했습니다.
+
+### 2.1. 아키텍처 변경점
+* **기존 (단일 서버)**: 클라이언트 ➡️ Controller ➡️ 내장 SimpleBroker ➡️ 클라이언트
+* **변경 (분산 서버)**: 클라이언트 ➡️ Controller ➡️ **Kafka 토픽 발행** ➡️ **Kafka 컨슈머 수신** ➡️ 내장 SimpleBroker ➡️ 클라이언트
+* **효과**: 서버가 N대로 늘어나더라도 모든 채팅 메시지가 Kafka를 거치기 때문에, 어떤 서버에 접속해 있든 동일한 채팅 메시지를 동기화받을 수 있습니다.
+
+---
+
+## 3. 백엔드: 채팅방 분리 (Dynamic Routing) 구현
+
+### 3.1. DTO 확장 (`ChatMessage.java`)
+* 어떤 채팅방의 메시지인지 식별하기 위해 `roomId` 필드 추가.
+
+### 3.2. 메시지 발행 최적화 (`ChatController.java`)
+* 기존 `@SendTo` 브로드캐스트를 제거하고, 들어온 메시지를 즉시 `chat.messages` 단일 Kafka 토픽으로 전송(`kafkaTemplate.send()`)하도록 수정.
+* 입장 이벤트(`/chat.addUser`) 발생 시 웹소켓 세션에 `username`과 `roomId`를 모두 보관하여 추후 퇴장/연결 끊김 시 활용 가능하도록 구성.
+
+### 3.3. 동적 토픽 분배 (`KafkaConsumerService.java`)
+* Kafka의 `chat.messages` 토픽을 구독하는 전용 `@KafkaListener` 추가.
+* 수신한 메시지의 `roomId`를 읽고, `SimpMessageSendingOperations`를 사용하여 `/topic/room/{roomId}` 형태의 **동적 목적지(Destination)로만 메시지를 전파**하도록 라우팅 처리.
+
+---
+
+## 4. 프론트엔드: 채팅방 접속 UI 개선 (`chat.html`)
+* 닉네임과 함께 **접속할 방 번호(`roomId`)**를 입력받을 수 있도록 UI 수정.
+* `connect()` 시, 입력한 방 번호를 기반으로 `stompClient.subscribe('/topic/room/' + currentRoomId)` 를 호출하여 해당 방의 메시지만 선별적으로 수신하도록 설정.
+* 메시지 송신(`sendMessage`) 시, payload 내부에 `roomId`를 포함하여 전송 (이로 인해 발생했던 Silent Fail 버그 해결 완료).
+
+---
+
+## 5. ⚠️ 트러블슈팅: Silent Fail (주소 불일치 버그)
+* **증상**: 프론트엔드에서 채팅 전송 시 백엔드 컨슈머까지 정상 수신되었으나, 프론트엔드 화면에 다른 사람의 채팅이 뜨지 않음.
+* **원인**: 백엔드는 `/topic/room/{roomId}` (슬래시 포함)로 메시지를 쏘고 있었으나, 프론트엔드의 구독 주소는 `/topic/room{roomId}` (슬래시 누락, 예: `/topic/room1`)로 설정되어 있어 목적지 불일치가 발생.
+* **해결**: 프론트엔드의 `subscribe` URL 문자열 조합 시 누락된 `/`를 추가하여 주소를 정확히 매칭시킴으로써 버그 해결.
