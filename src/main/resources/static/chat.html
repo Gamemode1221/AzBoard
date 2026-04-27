@@ -61,16 +61,46 @@
             }
         }
 
+        function loadChatHistory(roomId) {
+            fetch('/api/chat/' + roomId)
+                .then(response => response.json())
+                .then(chats => {
+                    chats.forEach(chat => {
+                        // 기존 onMessageReceived와 유사한 로직으로 화면에 추가
+                        drawMessage(chat.sender, chat.content, 'CHAT');
+                    });
+                    // 시스템 미시지 하나 띄워주기
+                    drawMessage('System', '--- 이전 대화 기록입니다 ---', 'JOIN');
+                });
+        }
+
+        function drawMessage(sender, content, type) {
+            let chatArea = document.getElementById('chat-area');
+            let messageElement = document.createElement('div');
+
+            if (type === 'JOIN') {
+                messageElement.classList.add('message-box', 'system');
+                messageElement.innerText = content;
+            } else {
+                messageElement.classList.add('message-box', sender === username ? 'me' : 'other');
+                messageElement.innerHTML = `<strong>${sender}</strong><br>${content}`;
+            }
+            chatArea.appendChild(messageElement);
+            chatArea.scrollTop = chatArea.scrollHeight;
+        }
+
         // 2. 연결 성공 시 실행되는 함수
         function onConnected() {
             // 서버의 토픽(/topic/public)을 구독(subscribe)함
             stompClient.subscribe('/topic/room/' + currentRoomId, onMessageReceived);
 
+            // 구독 성공 후 과거 기록 로드
+            loadChatHistory(currentRoomId);
+
             // 입장했다는 사실을 서버로 보냄
-            stompClient.send("/app/chat.addUser",
-                {},
-                JSON.stringify({sender: username, type: 'JOIN', roomId: currentRoomId})
-            )
+            stompClient.send("/app/chat.addUser", {}, JSON.stringify({
+                sender: username, type: 'JOIN', roomId: currentRoomId
+            }));
         }
 
         function onError(error) {
@@ -97,23 +127,12 @@
         // 4. 메시지를 받았을 때 화면에 그리는 함수
         function onMessageReceived(payload) {
             let message = JSON.parse(payload.body);
-            let chatArea = document.getElementById('chat-area');
-            let messageElement = document.createElement('div');
 
-            if (message.type === 'JOIN') {
-                messageElement.classList.add('message-box', 'system');
-                messageElement.innerText = message.sender + '님이 입장하셨습니다.';
-            } else if (message.type === 'LEAVE') {
-                messageElement.classList.add('message-box', 'system');
-                messageElement.innerText = message.sender + '님이 퇴장하셨습니다.';
-            } else {
-                // 메시지의 주체 확인
-                messageElement.classList.add('message-box', message.sender === username ? 'me' : 'other');
-                messageElement.innerHTML = `<strong>${message.sender}</strong><br>${message.content}`;
+            if (message.type === 'CHAT') {
+                drawMessage(message.sender, message.content, 'CHAT');
+            } else if (message.type === 'JOIN') {
+                drawMessage(message.sender, message.sender + '님이 입장하셨습니다.', 'JOIN');
             }
-
-            chatArea.appendChild(messageElement);
-            chatArea.scrollTop = chatArea.scrollHeight; // 스크롤을 항상 맨 아래로 유지
         }
     </script>
 </body>
